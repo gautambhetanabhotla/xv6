@@ -25,6 +25,9 @@ char *sys_sbrk(int, int);
 int pause(int);
 int uptime(void);
 int sync(void);
+int getsyscount(int);
+
+typedef unsigned int uint;
 
 // ulib.c
 int stat(const char *, struct stat *);

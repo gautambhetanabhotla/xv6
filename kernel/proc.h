@@ -1,3 +1,5 @@
+#include "syscall.h"
+
 // Saved registers for kernel context switches.
 struct context {
   uint64 ra;
@@ -101,4 +103,7 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  // Number of times each syscall has been called by this process
+  int num_syscalls[NUM_SYSCALLS + 1]; // +1 as syscalls numbers start from 1
 };

@@ -146,6 +146,12 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  // getsyscount: set the number of times each
+  // syscall has been called to zero.
+  for(int i = 0; i <= NUM_SYSCALLS; i++){
+    p->num_syscalls[i] = 0;
+  }
+
   return p;
 }
 
@@ -354,6 +360,16 @@ kexit(int status)
   wakeup(p->parent);
 
   acquire(&p->lock);
+
+  // Number of times a child calls a syscall must also be accounted for in the parent.
+  struct proc* parent = p->parent;
+  if(parent) {
+    acquire(&p->parent->lock);
+    for(int i = 0; i <= NUM_SYSCALLS; i++) {
+      p->parent->num_syscalls[i] += p->num_syscalls[i];
+    }
+    release(&p->parent->lock);
+  }
 
   p->xstate = status;
   p->state = ZOMBIE;
