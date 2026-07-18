@@ -106,4 +106,12 @@ struct proc {
 
   // Number of times each syscall has been called by this process
   int num_syscalls[NUM_SYSCALLS + 1]; // +1 as syscalls numbers start from 1
+
+  // sigalarm related variables
+  uint64 sigalarm_handler;      // pointer to the alarm handler function
+  int alarm_ticks;              // ticks that can pass until the alarm handler is called
+  int cur_ticks;                // current ticks since the last alarm handler call
+  struct trapframe* alarm_tf;   // trapframe right before the alarm handler is called
+  int alarm_set;                // flag to indicate if the process called sigalarm
+  int handler_running;          // flag to prevent multiple calls to the alarm handler
 };

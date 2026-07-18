@@ -67,7 +67,17 @@ usertrap(void)
 
     syscall();
   } else if ((which_dev = devintr()) != 0) {
-    // ok
+    if (which_dev == 2 && p->alarm_set && !(p->handler_running)) {
+      // timer interrupt
+      p->cur_ticks++;
+      if(p->cur_ticks >= p->alarm_ticks){
+        // time to call the alarm handler
+        memmove(p->alarm_tf, p->trapframe, sizeof(struct trapframe));
+        p->trapframe->epc = p->sigalarm_handler;
+        p->cur_ticks = 0;
+        p->handler_running = 1;
+      }
+    }
   } else if ((r_scause() == 15 || r_scause() == 13) &&
              vmfault(p->pagetable, r_stval(), (r_scause() == 13) ? 1 : 0) !=
                0) {

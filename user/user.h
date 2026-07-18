@@ -26,6 +26,8 @@ int pause(int);
 int uptime(void);
 int sync(void);
 int getsyscount(int);
+int sigalarm(int ticks, void (*handler)());
+int sigreturn(void);
 
 typedef unsigned int uint;
 

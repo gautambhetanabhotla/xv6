@@ -116,3 +116,37 @@ sys_getsyscount(void)
   argint(0, &syscall_no);
   return p->num_syscalls[syscall_no];
 }
+
+uint64
+sys_sigalarm(void)
+{
+  struct proc* p = myproc();
+  int ticks; uint64 handler;
+
+  argint(0, &ticks);
+  argaddr(1, &handler);
+
+  p->alarm_ticks = ticks;
+  p->sigalarm_handler = handler;
+  p->cur_ticks = 0;
+  p->alarm_set = (p->alarm_ticks > 0);
+  p->handler_running = 0;
+  if (!ticks) return 0; // Unset the alarm if ticks is zero
+  if (p->alarm_tf == 0) {
+    // Allocate memory for alarm_tf
+    if ((p->alarm_tf = (struct trapframe *)kalloc()) == 0) {
+      return 1; // Allocation failed
+    }
+  }
+  return 0;
+}
+
+uint64
+sys_sigreturn(void)
+{
+    struct proc *p = myproc();
+    // Restore the original trapframe
+    memmove(p->trapframe, p->alarm_tf, sizeof(struct trapframe));
+    p->handler_running = 0;
+    return p->trapframe->a0; // return the handler's return value
+}

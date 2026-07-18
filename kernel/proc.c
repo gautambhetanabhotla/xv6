@@ -152,6 +152,14 @@ found:
     p->num_syscalls[i] = 0;
   }
 
+  // Set up alarm variables.
+  p->sigalarm_handler = 0;
+  p->alarm_ticks = 0;
+  p->cur_ticks = 0;
+  p->alarm_tf = 0;
+  p->alarm_set = 0;
+  p->handler_running = 0;
+
   return p;
 }
 

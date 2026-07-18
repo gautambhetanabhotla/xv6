@@ -1,4 +1,4 @@
-#define NUM_SYSCALLS 23
+#define NUM_SYSCALLS 25
 
 // System call numbers
 #define SYS_fork   1
@@ -24,3 +24,5 @@
 #define SYS_close  21
 #define SYS_sync   22
 #define SYS_getsyscount 23
+#define SYS_sigalarm 24
+#define SYS_sigreturn 25
