@@ -12,3 +12,9 @@ Set alarms and alarm handlers. Calling `sigalarm(interval, handler)` lets you ma
 In your handler, call `sigreturn` to return to your regular code execution context.
 
 [Webpage](https://pdos.csail.mit.edu/6.1810/2024/labs/traps.html)
+
+## Copy-on-write fork
+
+The `fork` system call now defers duplication of pages until they are written to, instead of duplicating all pages at the time of the call.
+
+[Webpage](https://pdos.csail.mit.edu/6.1810/2022/labs/cow.html)

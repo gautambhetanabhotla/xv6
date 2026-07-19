@@ -78,10 +78,38 @@ usertrap(void)
         p->handler_running = 1;
       }
     }
-  } else if ((r_scause() == 15 || r_scause() == 13) &&
-             vmfault(p->pagetable, r_stval(), (r_scause() == 13) ? 1 : 0) !=
-               0) {
-    // page fault on lazily-allocated page
+  } else if (r_scause() == 13 || r_scause() == 15) {
+    // page fault: 13 = load (read), 15 = store (write)
+    uint64 va = r_stval();
+    if (va >= MAXVA) {
+      setkilled(p);
+    } else {
+      pte_t *pte = walk(p->pagetable, va, 0);
+      if (pte == 0 || (*pte & PTE_V) == 0) {
+        // lazy allocation fault
+        if (vmfault(p->pagetable, va, (r_scause() == 13) ? 1 : 0) == 0) {
+          setkilled(p);
+        }
+      } 
+      else if (r_scause() == 15 && (*pte & PTE_COW)) {
+        // copy-on-write fault
+        uint64 pa = PTE2PA(*pte);
+        uint flags = PTE_FLAGS(*pte);
+        char *mem = kalloc();
+        if (mem == 0) {
+          setkilled(p);
+        } else {
+          memmove(mem, (char*)pa, PGSIZE);
+          *pte = PA2PTE(mem) | (flags & ~PTE_COW) | PTE_W;
+          kfree((void *)pa); 
+          sfence_vma();
+        }
+      } 
+      else {
+        // invalid access
+        setkilled(p);
+      }
+    }
   } else {
     printk("usertrap(): unexpected scause 0x%lx pid=%d\n", r_scause(), p->pid);
     printk("            sepc=0x%lx stval=0x%lx\n", r_sepc(), r_stval());
