@@ -18,3 +18,9 @@ In your handler, call `sigreturn` to return to your regular code execution conte
 The `fork` system call now defers duplication of pages until they are written to, instead of duplicating all pages at the time of the call.
 
 [Webpage](https://pdos.csail.mit.edu/6.1810/2022/labs/cow.html)
+
+## Symbolic links
+
+Added a new `symlink` system call. `open` now follows symbolic links up to a maximum depth of 10 unless specified otherwise with the `O_NOFOLLOW` flag. Only works with files.
+
+[Webpage](https://pdos.csail.mit.edu/6.1810/2026/labs/fs-snap.html)

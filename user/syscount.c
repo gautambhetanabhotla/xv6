@@ -1,3 +1,4 @@
+#include "kernel/types.h"
 #include "user/user.h"
 #include "kernel/syscall.h"
 
@@ -25,7 +26,10 @@ char* syscallnames[] = {
   "mkdir",
   "close",
   "sync",
-  "getsyscount"
+  "getsyscount",
+  "sigalarm",
+  "sigreturn",
+  "symlink",
 };
 
 int

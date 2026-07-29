@@ -46,3 +46,4 @@ entry("sync");
 entry("getsyscount");
 entry("sigalarm");
 entry("sigreturn");
+entry("symlink");

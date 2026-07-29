@@ -707,6 +707,7 @@ namex(char *path, int nameiparent, char *name)
   return ip;
 }
 
+// Returns an UNLOCKED inode corresponding to the path name.
 struct inode *
 namei(char *path)
 {
@@ -718,4 +719,24 @@ struct inode *
 nameiparent(char *path, char *name)
 {
   return namex(path, 1, name);
+}
+
+// Takes in an locked inode pointer, and returns the inode that the symlink points to, locked.
+// NOT recursive. It only follows once.
+// If there is some error in the path or if not called on a symlink, it returns 0.
+struct inode *
+follow_symlink(struct inode* ip)
+{
+  char path[MAXPATH];
+  if (ip->type != T_SYMLINK) {
+    return 0;
+  }
+  if (readi(ip, 0, (uint64)path, 0, MAXPATH) <= 0) {
+    iunlockput(ip);
+    return 0;
+  }
+  iunlockput(ip);
+  struct inode *next_ip = namei(path);
+  if (next_ip) ilock(next_ip);
+  return next_ip;
 }

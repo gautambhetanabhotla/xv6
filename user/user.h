@@ -28,8 +28,7 @@ int sync(void);
 int getsyscount(int);
 int sigalarm(int ticks, void (*handler)());
 int sigreturn(void);
-
-typedef unsigned int uint;
+int symlink(const char *target, const char *linkpath);
 
 // ulib.c
 int stat(const char *, struct stat *);
@@ -53,3 +52,6 @@ void printf(const char *, ...) __attribute__((format(printf, 1, 2)));
 // umalloc.c
 void *malloc(uint);
 void free(void *);
+
+// readlink.c
+int readlink(const char *, char *, int);

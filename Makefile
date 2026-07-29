@@ -149,6 +149,8 @@ UPROGS=\
 	$U/_syscount\
 	$U/_alarmtest\
 	$U/_cowtest\
+	$U/_symlinktest\
+	$U/_readlink\
 
 fs.img: mkfs/mkfs README.md $(UPROGS)
 	mkfs/mkfs fs.img README.md $(UPROGS)
