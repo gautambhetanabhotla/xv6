@@ -144,9 +144,9 @@ sys_sigalarm(void)
 uint64
 sys_sigreturn(void)
 {
-    struct proc *p = myproc();
-    // Restore the original trapframe
-    memmove(p->trapframe, p->alarm_tf, sizeof(struct trapframe));
-    p->handler_running = 0;
-    return p->trapframe->a0; // return the handler's return value
+  struct proc *p = myproc();
+  // Restore the original trapframe
+  memmove(p->trapframe, p->alarm_tf, sizeof(struct trapframe));
+  p->handler_running = 0;
+  return p->trapframe->a0;
 }
