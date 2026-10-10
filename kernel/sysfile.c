@@ -242,6 +242,7 @@ bad:
   return -1;
 }
 
+// Returns a LOCKED inode, creating it if the path doesn't exist.
 static struct inode *
 create(char *path, short type, short major, short minor)
 {
@@ -257,6 +258,8 @@ create(char *path, short type, short major, short minor)
     iunlockput(dp);
     ilock(ip);
     if (type == T_FILE && (ip->type == T_FILE || ip->type == T_DEVICE))
+      return ip;
+    if (type == T_SYMLINK && ip->type == T_SYMLINK)
       return ip;
     iunlockput(ip);
     return 0;
@@ -318,37 +321,38 @@ sys_open(void)
 
   if (omode & O_CREATE) {
     ip = create(path, T_FILE, 0, 0);
-    if (ip == 0) {
-      end_op();
-      return -1;
-    }
+    if (ip == 0) ip = create(path, T_SYMLINK, 0, 0);
   } else {
-    if ((ip = namei(path)) == 0) {
-      end_op();
-      return -1;
-    }
-    ilock(ip);
-    if (!(omode & O_NOFOLLOW)) {
-      int depth = 0;
-      while (ip->type == T_SYMLINK) {
-        if (depth >= 10) {
-          iunlockput(ip);
-          end_op();
-          return -1;
-        }
-        ip = follow_symlink(ip);
-        if (ip == 0) {
-          end_op();
-          return -1;
-        }
-        depth++;
+    ip = namei(path);
+    if (ip) ilock(ip);
+  }
+
+  if (ip == 0) {
+    end_op();
+    return -1;
+  }
+
+  if (!(omode & O_NOFOLLOW)) {
+    int depth = 0;
+    while (ip->type == T_SYMLINK) {
+      if (depth >= 10) {
+        iunlockput(ip);
+        end_op();
+        return -1;
       }
+      ip = follow_symlink(ip);
+      if (ip == 0) {
+        end_op();
+        return -1;
+      }
+      depth++;
     }
-    if (ip->type == T_DIR && omode != O_RDONLY) {
-      iunlockput(ip);
-      end_op();
-      return -1;
-    }
+  }
+
+  if (ip->type == T_DIR && (omode & ~O_CREATE & ~O_NOFOLLOW) != O_RDONLY) {
+    iunlockput(ip);
+    end_op();
+    return -1;
   }
 
   if (ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)) {
