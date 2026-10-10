@@ -374,7 +374,7 @@ sys_open(void)
     f->major = ip->major;
   } else {
     f->type = FD_INODE;
-    f->off = 0;
+    f->off = (omode & O_APPEND) ? ip->size : 0;
   }
   f->ip = ip;
   f->readable = !(omode & O_WRONLY);

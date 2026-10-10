@@ -4,3 +4,4 @@
 #define O_CREATE 0x200
 #define O_TRUNC  0x400
 #define O_NOFOLLOW 0x800
+#define O_APPEND 0x1000
