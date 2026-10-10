@@ -13,6 +13,7 @@
 static int failed = 0;
 
 static void testsymlink(void);
+static void createsymlink(void);
 static void concur(void);
 static void cleanup(void);
 
@@ -21,6 +22,7 @@ main(int argc, char *argv[])
 {
   cleanup();
   testsymlink();
+  createsymlink();
   concur();
   exit(failed);
 }
@@ -37,6 +39,8 @@ cleanup(void)
   unlink("/testsymlink/4");
   unlink("/testsymlink/z");
   unlink("/testsymlink/y");
+  unlink("/testsymlink/t");
+  unlink("/testsymlink/l");
   unlink("/testsymlink");
 }
 
@@ -129,6 +133,49 @@ testsymlink(void)
 done:
   close(fd1);
   close(fd2);
+}
+
+// open an existing symlink with O_CREATE (e.g. echo hi >> link)
+static void
+createsymlink(void)
+{
+  int fd = -1;
+  char buf[8];
+  struct stat st;
+
+  printf("Start: test O_CREATE on existing symlink\n");
+
+  fd = open("/testsymlink/t", O_CREATE | O_RDWR);
+  if(fd < 0) fail("failed to create t");
+  if(write(fd, "hello", 5) != 5) fail("failed to write to t");
+  close(fd);
+  fd = -1;
+
+  if(symlink("/testsymlink/t", "/testsymlink/l") != 0)
+    fail("symlink l -> t failed");
+
+  // append through the symlink
+  fd = open("/testsymlink/l", O_WRONLY | O_CREATE | O_APPEND);
+  if(fd < 0) fail("failed to open symlink l with O_CREATE");
+  if(write(fd, "hi", 2) != 2) fail("failed to write through l");
+  close(fd);
+  fd = -1;
+
+  // l must still be a symlink, not replaced by a regular file
+  if(stat_slink("/testsymlink/l", &st) != 0) fail("failed to stat l");
+  if(st.type != T_SYMLINK) fail("l is no longer a symlink");
+
+  // the data must have landed at the end of the target
+  fd = open("/testsymlink/t", O_RDONLY);
+  if(fd < 0) fail("failed to open t");
+  memset(buf, 0, sizeof(buf));
+  if(read(fd, buf, sizeof(buf)) != 7) fail("t has wrong size after append");
+  if(memcmp(buf, "hellohi", 7) != 0) fail("t has wrong contents after append");
+
+  printf("test O_CREATE on existing symlink: ok\n");
+done:
+  if(fd >= 0)
+    close(fd);
 }
 
 static void
