@@ -53,6 +53,13 @@ int fork1(void); // Fork but panics on failure.
 void panic(char *);
 struct cmd *parsecmd(char *);
 void runcmd(struct cmd *) __attribute__((noreturn));
+char *expand(char *);
+void expandargs(char **);
+void exportvar(char *);
+void unsetvar(char *);
+void printenv(void);
+char *splitlist(char *);
+void runsimple(char *);
 
 // Execute cmd.  Never returns.
 void
@@ -74,8 +81,23 @@ runcmd(struct cmd *cmd)
 
   case EXEC:
     ecmd = (struct execcmd *)cmd;
+    expandargs(ecmd->argv);
     if (ecmd->argv[0] == 0)
       exit(1);
+    if (strcmp(ecmd->argv[0], "export") == 0) {
+      // Not run by the shell itself (e.g. part of a pipeline or in
+      // parentheses), so it only affects this subshell.
+      if (ecmd->argv[1] == 0)
+        printenv();
+      for (int i = 1; ecmd->argv[i]; i++)
+        exportvar(ecmd->argv[i]);
+      exit(0);
+    }
+    if (strcmp(ecmd->argv[0], "unset") == 0) {
+      for (int i = 1; ecmd->argv[i]; i++)
+        unsetvar(ecmd->argv[i]);
+      exit(0);
+    }
     exec(ecmd->argv[0], ecmd->argv);
     fprintf(2, "exec %s failed\n", ecmd->argv[0]);
     break;
@@ -83,7 +105,7 @@ runcmd(struct cmd *cmd)
   case REDIR:
     rcmd = (struct redircmd *)cmd;
     close(rcmd->fd);
-    if (open(rcmd->file, rcmd->mode) < 0) {
+    if (open(expand(rcmd->file), rcmd->mode) < 0) {
       fprintf(2, "open %s failed\n", rcmd->file);
       exit(1);
     }
@@ -158,20 +180,13 @@ main(void)
 
   // Read and run input commands.
   while (getcmd(buf, sizeof(buf)) >= 0) {
-    char *cmd = buf;
-    while (*cmd == ' ' || *cmd == '\t')
-      cmd++;
-    if (*cmd == '\n') // is a blank command
-      continue;
-    if (cmd[0] == 'c' && cmd[1] == 'd' && cmd[2] == ' ') {
-      // Chdir must be called by the parent, not the child.
-      cmd[strlen(cmd) - 1] = 0; // chop \n
-      if (chdir(cmd + 3) < 0)
-        fprintf(2, "cannot cd %s\n", cmd + 3);
-    } else {
-      if (fork1() == 0)
-        runcmd(parsecmd(cmd));
-      wait(0);
+    char *cmd, *next;
+    // Run each ;-separated command from here rather than leaving them
+    // to runcmd's LIST case, so that a cd or export takes effect in
+    // the shell, in time for the commands after it.
+    for (cmd = buf; cmd; cmd = next) {
+      next = splitlist(cmd);
+      runsimple(cmd);
     }
   }
   exit(0);
@@ -496,4 +511,214 @@ nulterminate(struct cmd *cmd)
     break;
   }
   return cmd;
+}
+
+//PAGEBREAK!
+// Environment variables and builtins
+
+extern char **environ;
+
+// Length of the variable name at the start of s, or 0 if there is none.
+int
+varlen(char *s)
+{
+  int n = 0;
+
+  if (*s >= '0' && *s <= '9')
+    return 0;
+  while ((s[n] >= 'a' && s[n] <= 'z') || (s[n] >= 'A' && s[n] <= 'Z') ||
+         (s[n] >= '0' && s[n] <= '9') || s[n] == '_')
+    n++;
+  return n;
+}
+
+// Value of the variable whose name is the n characters at name.
+// Unset variables have an empty value.
+char *
+lookup(char *name, int n)
+{
+  char c = name[n];
+  char *v;
+
+  name[n] = 0;
+  v = getenv(name);
+  name[n] = c;
+  return v ? v : "";
+}
+
+// Return a newly allocated copy of word with each $NAME replaced by
+// its value. A $ that does not start a name is left as it is.
+char *
+expand(char *word)
+{
+  char *p, *q, *v, *out;
+  int n, len = 1;
+
+  for (p = word; *p;) {
+    if (*p == '$' && (n = varlen(p + 1)) > 0) {
+      len += strlen(lookup(p + 1, n));
+      p += n + 1;
+    } else {
+      len++;
+      p++;
+    }
+  }
+
+  out = malloc(len);
+  for (p = word, q = out; *p;) {
+    if (*p == '$' && (n = varlen(p + 1)) > 0) {
+      v = lookup(p + 1, n);
+      strcpy(q, v);
+      q += strlen(v);
+      p += n + 1;
+    } else {
+      *q++ = *p++;
+    }
+  }
+  *q = 0;
+  return out;
+}
+
+// Expand each word of argv. As in other shells, a word that expands to
+// nothing is removed instead of becoming an empty argument.
+void
+expandargs(char **argv)
+{
+  int i, n = 0;
+
+  for (i = 0; argv[i]; i++) {
+    char *w = expand(argv[i]);
+    if (*w)
+      argv[n++] = w;
+  }
+  argv[n] = 0;
+}
+
+// Handle one argument of export: NAME=VALUE sets a variable. A plain
+// NAME is accepted but does nothing, as there are no shell variables
+// to promote to the environment.
+void
+exportvar(char *word)
+{
+  char *eq = strchr(word, '=');
+  int n = varlen(word);
+
+  if (n == 0 || (eq ? word + n != eq : word[n] != 0)) {
+    fprintf(2, "export: bad variable name: %s\n", word);
+    return;
+  }
+  if (eq) {
+    *eq = 0;
+    setenv(word, eq + 1);
+    *eq = '=';
+  }
+}
+
+// Handle one argument of unset. Unsetting a variable that isn't set
+// is not an error.
+void
+unsetvar(char *word)
+{
+  if (varlen(word) == 0 || word[varlen(word)] != 0) {
+    fprintf(2, "unset: bad variable name: %s\n", word);
+    return;
+  }
+  unsetenv(word);
+}
+
+void
+printenv(void)
+{
+  for (int i = 0; environ[i]; i++)
+    printf("%s\n", environ[i]);
+}
+
+// NUL-terminate s at its first ';' outside parentheses, and return the
+// text after it. Return 0 if there is no such ';'.
+char *
+splitlist(char *s)
+{
+  int depth = 0;
+
+  for (; *s; s++) {
+    if (*s == '(') {
+      depth++;
+    } else if (*s == ')') {
+      depth--;
+    } else if (*s == ';' && depth <= 0) {
+      *s = 0;
+      return s + 1;
+    }
+  }
+  return 0;
+}
+
+// True if s is the builtin called name, in a form the shell can run
+// itself, which it can't if it has to fork for a pipe, redirection and
+// so on.
+int
+isbuiltin(char *s, char *name)
+{
+  int n = strlen(name);
+
+  if (strncmp(s, name, n) != 0 ||
+      (s[n] != 0 && strchr(whitespace, s[n]) == 0))
+    return 0;
+  for (; *s; s++)
+    if (strchr(symbols, *s))
+      return 0;
+  return 1;
+}
+
+// Call fn on each expanded argument of the builtin command s, in the
+// shell itself. This doesn't use parsecmd, since a panic there would
+// exit the shell rather than a forked child.
+void
+runbuiltin(char *s, void (*fn)(char *))
+{
+  char *es = s + strlen(s);
+  char *q, *eq, *w;
+
+  gettoken(&s, es, 0, 0); // skip the builtin's name
+  while (gettoken(&s, es, &q, &eq) == 'a') {
+    *eq = 0;
+    w = expand(q);
+    if (*w)
+      fn(w);
+    free(w);
+  }
+}
+
+// Run one command that has no top-level ';', and wait for it.
+void
+runsimple(char *cmd)
+{
+  char *e, *dir;
+
+  while (*cmd && strchr(whitespace, *cmd))
+    cmd++;
+  e = cmd + strlen(cmd);
+  while (e > cmd && strchr(whitespace, e[-1]))
+    *--e = 0;
+  if (*cmd == 0) // is a blank command
+    return;
+
+  if (cmd[0] == 'c' && cmd[1] == 'd' && cmd[2] == ' ') {
+    // Chdir must be called by the parent, not the child.
+    dir = expand(cmd + 3);
+    if (chdir(dir) < 0)
+      fprintf(2, "cannot cd %s\n", dir);
+    free(dir);
+  } else if (isbuiltin(cmd, "export")) {
+    // Likewise changing the environment.
+    if (strcmp(cmd, "export") == 0)
+      printenv();
+    runbuiltin(cmd, exportvar);
+  } else if (isbuiltin(cmd, "unset")) {
+    runbuiltin(cmd, unsetvar);
+  } else {
+    if (fork1() == 0)
+      runcmd(parsecmd(cmd));
+    wait(0);
+  }
 }

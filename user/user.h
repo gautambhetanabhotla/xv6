@@ -48,6 +48,7 @@ char *sbrklazy(int);
 int exec(char *, char **); // execve with the current environ (ulib.c)
 char *getenv(const char *name);
 void setenv(const char *name, const char *value);
+void unsetenv(const char *name);
 
 // printf.c
 void fprintf(int, const char *, ...) __attribute__((format(printf, 2, 3)));

@@ -49,6 +49,17 @@ void setenv(const char *name, const char *value)
   environ = new_environ;
 }
 
+void unsetenv(const char *name)
+{
+  int i, n = 0;
+  int len = strlen(name);
+  for (i = 0; environ[i]; i++) {
+    if (strncmp(environ[i], name, len) != 0 || environ[i][len] != '=')
+      environ[n++] = environ[i];
+  }
+  environ[n] = 0;
+}
+
 #define DEFAULT_PATH "/bin"
 
 // Like execve, but with the current environment, and if file contains
