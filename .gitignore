@@ -1,12 +1,6 @@
 *~
-_*
-*.o
-*.d
-*.asm
-*.sym
-*.img
-/mkfs/mkfs
-/kernel/kernel
-/user/usys.S
+/build/
+/fs/bin/
+/fs/README.md
 .gdbinit
 TAGS

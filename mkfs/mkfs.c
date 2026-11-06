@@ -4,12 +4,19 @@
 #include <string.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <dirent.h>
+#include <limits.h>
+#include <sys/stat.h>
 
-#define stat xv6_stat // avoid clash with host struct stat
+// avoid clashes with host struct stat / struct dirent
+#define stat xv6_stat
+#define dirent xv6_dirent
 #include "kernel/types.h"
 #include "kernel/fs.h"
 #include "kernel/stat.h"
 #include "kernel/param.h"
+#undef stat
+#undef dirent
 
 #ifndef static_assert
 #define static_assert(a, b)                                                    \
@@ -45,6 +52,8 @@ void rsect(uint sec, void *buf);
 uint ialloc(ushort type);
 void iappend(uint inum, void *p, int n);
 void die(const char *);
+void addtree(uint dirino, const char *hostdir);
+static void padsize(uint inum);
 
 // convert to riscv byte order
 ushort
@@ -72,21 +81,20 @@ xint(uint x)
 int
 main(int argc, char *argv[])
 {
-  int i, cc, fd;
-  uint rootino, inum, off;
-  struct dirent de;
+  int i;
+  uint rootino;
+  struct xv6_dirent de;
   char buf[BSIZE];
-  struct dinode din;
 
   static_assert(sizeof(int) == 4, "Integers must be 4 bytes!");
 
-  if (argc < 2) {
-    fprintf(stderr, "Usage: mkfs fs.img files...\n");
+  if (argc != 3) {
+    fprintf(stderr, "Usage: mkfs fs.img rootdir\n");
     exit(1);
   }
 
   assert((BSIZE % sizeof(struct dinode)) == 0);
-  assert((BSIZE % sizeof(struct dirent)) == 0);
+  assert((BSIZE % sizeof(struct xv6_dirent)) == 0);
 
   fsfd = open(argv[1], O_RDWR | O_CREAT | O_TRUNC, 0666);
   if (fsfd < 0)
@@ -131,51 +139,118 @@ main(int argc, char *argv[])
   strcpy(de.name, "..");
   iappend(rootino, &de, sizeof(de));
 
-  for (i = 2; i < argc; i++) {
-    // get rid of "user/"
-    char *shortname;
-    if (strncmp(argv[i], "user/", 5) == 0)
-      shortname = argv[i] + 5;
-    else
-      shortname = argv[i];
-
-    assert(index(shortname, '/') == 0);
-
-    if ((fd = open(argv[i], 0)) < 0)
-      die(argv[i]);
-
-    // Skip leading _ in name when writing to file system.
-    // The binaries are named _rm, _cat, etc. to keep the
-    // build operating system from trying to execute them
-    // in place of system binaries like rm and cat.
-    if (shortname[0] == '_')
-      shortname += 1;
-
-    assert(strlen(shortname) <= DIRSIZ);
-
-    inum = ialloc(T_FILE);
-
-    bzero(&de, sizeof(de));
-    de.inum = xshort(inum);
-    strncpy(de.name, shortname, DIRSIZ);
-    iappend(rootino, &de, sizeof(de));
-
-    while ((cc = read(fd, buf, sizeof(buf))) > 0)
-      iappend(inum, buf, cc);
-
-    close(fd);
-  }
-
-  // fix size of root inode dir
-  rinode(rootino, &din);
-  off = xint(din.size);
-  off = ((off / BSIZE) + 1) * BSIZE;
-  din.size = xint(off);
-  winode(rootino, &din);
+  addtree(rootino, argv[2]);
+  padsize(rootino);
 
   balloc(freeblock);
 
   exit(0);
+}
+
+// Round a directory's size up to a whole block, as the original mkfs
+// did for the root directory.
+static void
+padsize(uint inum)
+{
+  struct dinode din;
+  uint off;
+
+  rinode(inum, &din);
+  off = xint(din.size);
+  off = ((off / BSIZE) + 1) * BSIZE;
+  din.size = xint(off);
+  winode(inum, &din);
+}
+
+static void
+adddirent(uint dirino, uint inum, const char *name)
+{
+  struct xv6_dirent de;
+
+  bzero(&de, sizeof(de));
+  de.inum = xshort(inum);
+  strncpy(de.name, name, DIRSIZ);
+  iappend(dirino, &de, sizeof(de));
+}
+
+static int
+skipdots(const struct dirent *d)
+{
+  return strcmp(d->d_name, ".") != 0 && strcmp(d->d_name, "..") != 0;
+}
+
+// Recursively copy the contents of host directory hostdir into the
+// xv6 directory dirino. Regular files, directories and symbolic links
+// are supported; anything else is skipped with a warning.
+void
+addtree(uint dirino, const char *hostdir)
+{
+  struct dirent **ents;
+  char path[PATH_MAX], buf[BSIZE];
+  struct stat st;
+  struct dinode din;
+  uint inum;
+  int i, n, fd, cc;
+  ssize_t len;
+
+  // Sort entries so the resulting image is deterministic.
+  n = scandir(hostdir, &ents, skipdots, alphasort);
+  if (n < 0)
+    die(hostdir);
+
+  for (i = 0; i < n; i++) {
+    const char *name = ents[i]->d_name;
+
+    if (snprintf(path, sizeof(path), "%s/%s", hostdir, name) >= sizeof(path)) {
+      fprintf(stderr, "mkfs: path too long: %s/%s\n", hostdir, name);
+      exit(1);
+    }
+    if (strlen(name) > DIRSIZ) {
+      fprintf(stderr, "mkfs: name longer than %d chars: %s\n", DIRSIZ, path);
+      exit(1);
+    }
+    if (lstat(path, &st) < 0)
+      die(path);
+
+    if (S_ISDIR(st.st_mode)) {
+      inum = ialloc(T_DIR);
+      adddirent(dirino, inum, name);
+      adddirent(inum, inum, ".");
+      adddirent(inum, dirino, "..");
+      // ".." in the new directory is a link to the parent.
+      rinode(dirino, &din);
+      din.nlink = xshort(xshort(din.nlink) + 1);
+      winode(dirino, &din);
+      addtree(inum, path);
+      padsize(inum);
+    } else if (S_ISREG(st.st_mode)) {
+      inum = ialloc(T_FILE);
+      adddirent(dirino, inum, name);
+      if ((fd = open(path, O_RDONLY)) < 0)
+        die(path);
+      while ((cc = read(fd, buf, sizeof(buf))) > 0)
+        iappend(inum, buf, cc);
+      if (cc < 0)
+        die(path);
+      close(fd);
+    } else if (S_ISLNK(st.st_mode)) {
+      // The kernel stores the target NUL-terminated (see sys_symlink).
+      if ((len = readlink(path, buf, MAXPATH)) < 0)
+        die(path);
+      if (len >= MAXPATH) {
+        fprintf(stderr, "mkfs: symlink target too long: %s\n", path);
+        exit(1);
+      }
+      buf[len] = '\0';
+      inum = ialloc(T_SYMLINK);
+      adddirent(dirino, inum, name);
+      iappend(inum, buf, len + 1);
+    } else {
+      fprintf(stderr, "mkfs: skipping unsupported file type: %s\n", path);
+    }
+    free(ents[i]);
+  }
+  free(ents);
 }
 
 void
@@ -228,6 +303,11 @@ ialloc(ushort type)
 {
   uint inum = freeinode++;
   struct dinode din;
+
+  if (inum >= NINODES) {
+    fprintf(stderr, "mkfs: out of inodes (NINODES = %d)\n", NINODES);
+    exit(1);
+  }
 
   bzero(&din, sizeof(din));
   din.type = xshort(type);

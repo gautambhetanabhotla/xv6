@@ -183,7 +183,7 @@ copyinstr2(char *s)
       big[i] = 'x';
     big[PGSIZE] = '\0';
     char *args2[] = {big, big, big, 0};
-    ret = exec("echo", args2);
+    ret = exec("/bin/echo", args2);
     if (ret != -1) {
       printf("exec(echo, BIG) returned %d, not -1\n", fd);
       exit(1);
@@ -525,7 +525,7 @@ opentest(char *s)
 {
   int fd;
 
-  fd = open("echo", 0);
+  fd = open("/bin/echo", 0);
   if (fd < 0) {
     printf("%s: open echo failed!\n", s);
     exit(1);
@@ -708,7 +708,7 @@ exectest(char *s)
       fprintf(errfd, "%s: wrong fd\n", s);
       exit(1);
     }
-    if (exec("echo", echoargv) < 0) {
+    if (exec("/bin/echo", echoargv) < 0) {
       fprintf(errfd, "%s: exec echo failed\n", s);
       exit(1);
     }
@@ -1514,7 +1514,7 @@ linkunlink(char *s)
     if ((x % 3) == 0) {
       close(open("x", O_RDWR | O_CREATE));
     } else if ((x % 3) == 1) {
-      link("cat", "x");
+      link("/bin/cat", "x");
     } else {
       unlink("x");
     }
@@ -2323,7 +2323,7 @@ bigargtest(char *s)
     args[MAXARG - 1] = 0;
     // this exec() should fail (and return) because the
     // arguments are too large.
-    exec("echo", args);
+    exec("/bin/echo", args);
     fd = open("bigarg-ok", O_CREATE);
     close(fd);
     exit(0);
@@ -2349,7 +2349,6 @@ void
 fsfull()
 {
   int nfiles;
-  int fsblocks = 0;
 
   printf("fsfull test\n");
 
@@ -2373,7 +2372,6 @@ fsfull()
       if (cc < BSIZE)
         break;
       total += cc;
-      fsblocks++;
     }
     printf("wrote %d bytes\n", total);
     close(fd);
@@ -2400,7 +2398,7 @@ void
 argptest(char *s)
 {
   int fd;
-  fd = open("init", O_RDONLY);
+  fd = open("/bin/init", O_RDONLY);
   if (fd < 0) {
     printf("%s: open failed\n", s);
     exit(1);
@@ -2587,7 +2585,7 @@ badarg(char *s)
     char *argv[2];
     argv[0] = (char *)0xffffffff;
     argv[1] = 0;
-    exec("echo", argv);
+    exec("/bin/echo", argv);
   }
 
   exit(0);
@@ -2997,7 +2995,7 @@ execout(char *s)
 
       close(1);
       char *args[] = {"echo", "x", 0};
-      exec("echo", args);
+      exec("/bin/echo", args);
       exit(0);
     } else {
       wait((int *)0);

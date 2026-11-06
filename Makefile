@@ -1,34 +1,39 @@
 K=kernel
 U=user
+# All build artifacts (objects, kernel image, mkfs, fs.img) go here.
+B=build
+# Host directory tree copied verbatim into the xv6 file system by mkfs.
+# User programs are linked into $(FS)/bin.
+FS=fs
 
 OBJS = \
-  $K/entry.o \
-  $K/start.o \
-  $K/console.o \
-  $K/printk.o \
-  $K/uart.o \
-  $K/kalloc.o \
-  $K/spinlock.o \
-  $K/string.o \
-  $K/main.o \
-  $K/vm.o \
-  $K/proc.o \
-  $K/swtch.o \
-  $K/trampoline.o \
-  $K/trap.o \
-  $K/syscall.o \
-  $K/sysproc.o \
-  $K/bio.o \
-  $K/fs.o \
-  $K/log.o \
-  $K/sleeplock.o \
-  $K/file.o \
-  $K/pipe.o \
-  $K/exec.o \
-  $K/sysfile.o \
-  $K/kernelvec.o \
-  $K/plic.o \
-  $K/virtio_disk.o
+  $B/$K/entry.o \
+  $B/$K/start.o \
+  $B/$K/console.o \
+  $B/$K/printk.o \
+  $B/$K/uart.o \
+  $B/$K/kalloc.o \
+  $B/$K/spinlock.o \
+  $B/$K/string.o \
+  $B/$K/main.o \
+  $B/$K/vm.o \
+  $B/$K/proc.o \
+  $B/$K/swtch.o \
+  $B/$K/trampoline.o \
+  $B/$K/trap.o \
+  $B/$K/syscall.o \
+  $B/$K/sysproc.o \
+  $B/$K/bio.o \
+  $B/$K/fs.o \
+  $B/$K/log.o \
+  $B/$K/sleeplock.o \
+  $B/$K/file.o \
+  $B/$K/pipe.o \
+  $B/$K/exec.o \
+  $B/$K/sysfile.o \
+  $B/$K/kernelvec.o \
+  $B/$K/plic.o \
+  $B/$K/virtio_disk.o
 
 # riscv64-unknown-elf- or riscv64-linux-gnu-
 # perhaps in /opt/riscv/bin
@@ -86,84 +91,113 @@ endif
 
 LDFLAGS = -z max-page-size=4096
 
-$K/kernel: $(OBJS) $K/kernel.ld
-	$(LD) $(LDFLAGS) -T $K/kernel.ld -o $K/kernel $(OBJS) 
-	$(OBJDUMP) -S $K/kernel > $K/kernel.asm
-	$(OBJDUMP) -t $K/kernel | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $K/kernel.sym
+KERNEL = $B/$K/kernel
 
-$K/%.o: $K/%.S
+$(KERNEL): $(OBJS) $K/kernel.ld
+	$(LD) $(LDFLAGS) -T $K/kernel.ld -o $@ $(OBJS)
+	$(OBJDUMP) -S $@ > $B/$K/kernel.asm
+	$(OBJDUMP) -t $@ | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $B/$K/kernel.sym
+
+$B/$K/%.o: $K/%.c
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$B/$K/%.o: $K/%.S
+	@mkdir -p $(@D)
 	$(CC) -march=rv64gc -g -c -o $@ $<
 
 tags: $(OBJS)
 	etags kernel/*.S kernel/*.c
 
-ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o
+ULIB = $B/$U/ulib.o $B/$U/usys.o $B/$U/printf.o $B/$U/umalloc.o
 
-_%: %.o $(ULIB) $U/user.ld
+$B/$U/%.o: $U/%.c
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$B/$U/usys.S: $U/usys.pl
+	@mkdir -p $(@D)
+	perl $U/usys.pl > $@
+
+$B/$U/usys.o: $B/$U/usys.S
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(FS)/bin/%: $B/$U/%.o $(ULIB) $U/user.ld
+	@mkdir -p $(@D)
 	$(LD) $(LDFLAGS) -T $U/user.ld -o $@ $< $(ULIB)
-	$(OBJDUMP) -S $@ > $*.asm
-	$(OBJDUMP) -t $@ | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $*.sym
+	$(OBJDUMP) -S $@ > $B/$U/$*.asm
+	$(OBJDUMP) -t $@ | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $B/$U/$*.sym
 
-$U/usys.S : $U/usys.pl
-	perl $U/usys.pl > $U/usys.S
-
-$U/usys.o : $U/usys.S
-	$(CC) $(CFLAGS) -c -o $U/usys.o $U/usys.S
-
-$U/_forktest: $U/forktest.o $(ULIB)
+$(FS)/bin/forktest: $B/$U/forktest.o $(ULIB)
 	# forktest has less library code linked in - needs to be small
 	# in order to be able to max out the proc table.
-	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $U/_forktest $U/forktest.o $U/ulib.o $U/usys.o
-	$(OBJDUMP) -S $U/_forktest > $U/forktest.asm
+	@mkdir -p $(@D)
+	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $@ $B/$U/forktest.o $B/$U/ulib.o $B/$U/usys.o
+	$(OBJDUMP) -S $@ > $B/$U/forktest.asm
 
-mkfs/mkfs: mkfs/mkfs.c $K/fs.h $K/param.h
-	gcc -Wno-unknown-attributes -I. -o mkfs/mkfs mkfs/mkfs.c
+MKFS = $B/mkfs/mkfs
+
+$(MKFS): mkfs/mkfs.c $K/fs.h $K/param.h $K/stat.h
+	@mkdir -p $(@D)
+	gcc -Wall -Wno-unknown-attributes -I. -o $@ mkfs/mkfs.c
 
 # Prevent deletion of intermediate files, e.g. cat.o, after first build, so
 # that disk image changes after first build are persistent until clean.  More
 # details:
 # http://www.gnu.org/software/make/manual/html_node/Chained-Rules.html
-.PRECIOUS: %.o
+.PRECIOUS: $B/$U/%.o
 
 UPROGS=\
-	$U/_cat\
-	$U/_echo\
-	$U/_forktest\
-	$U/_grep\
-	$U/_init\
-	$U/_kill\
-	$U/_ln\
-	$U/_ls\
-	$U/_mkdir\
-	$U/_rm\
-	$U/_sh\
-	$U/_stressfs\
-	$U/_usertests\
-	$U/_grind\
-	$U/_wc\
-	$U/_zombie\
-	$U/_logstress\
-	$U/_forphan\
-	$U/_dorphan\
-	$U/_sync\
-	$U/_syscount\
-	$U/_alarmtest\
-	$U/_cowtest\
-	$U/_symlinktest\
-	$U/_readlink\
+	$(FS)/bin/cat\
+	$(FS)/bin/echo\
+	$(FS)/bin/forktest\
+	$(FS)/bin/grep\
+	$(FS)/bin/init\
+	$(FS)/bin/kill\
+	$(FS)/bin/ln\
+	$(FS)/bin/ls\
+	$(FS)/bin/mkdir\
+	$(FS)/bin/rm\
+	$(FS)/bin/sh\
+	$(FS)/bin/stressfs\
+	$(FS)/bin/usertests\
+	$(FS)/bin/grind\
+	$(FS)/bin/wc\
+	$(FS)/bin/zombie\
+	$(FS)/bin/logstress\
+	$(FS)/bin/forphan\
+	$(FS)/bin/dorphan\
+	$(FS)/bin/sync\
+	$(FS)/bin/syscount\
+	$(FS)/bin/alarmtest\
+	$(FS)/bin/cowtest\
+	$(FS)/bin/symlinktest\
+	$(FS)/bin/readlink\
 
-fs.img: mkfs/mkfs README.md $(UPROGS)
-	mkfs/mkfs fs.img README.md $(UPROGS)
+# usertests expects README.md in the root directory.
+$(FS)/README.md: README.md
+	@mkdir -p $(@D)
+	cp $< $@
 
--include kernel/*.d user/*.d
+# Everything under $(FS)/ (except symlinks, which may dangle on the host).
+# Directories are included so that adding/removing files triggers a rebuild.
+FSFILES := $(shell find $(FS) ! -type l 2>/dev/null)
 
-clean: 
-	rm -f *.tex *.dvi *.idx *.aux *.log *.ind *.ilg \
-	*/*.o */*.d */*.asm */*.sym \
-	$K/kernel fs.img \
-	mkfs/mkfs .gdbinit \
-        $U/usys.S \
-	$(UPROGS)
+FSIMG = $B/fs.img
+
+# Make sure fs/root (the home directory) exists. Order-only, so its
+# timestamp doesn't force image rebuilds on its own.
+$(FS)/root:
+	mkdir -p $@
+
+$(FSIMG): $(MKFS) $(UPROGS) $(FS)/README.md $(FSFILES) | $(FS)/root
+	$(MKFS) $@ $(FS)
+
+-include $(wildcard $B/$K/*.d $B/$U/*.d)
+
+clean:
+	rm -rf $B $(FS)/bin $(FS)/README.md .gdbinit \
+	*.tex *.dvi *.idx *.aux *.log *.ind *.ilg
 
 # try to generate a unique GDB port
 GDBPORT = $(shell expr `id -u` % 5000 + 25000)
@@ -175,18 +209,18 @@ ifndef CPUS
 CPUS := 3
 endif
 
-QEMUOPTS = -machine virt -bios none -kernel $K/kernel -m 128M -smp $(CPUS) -nographic
+QEMUOPTS = -machine virt -bios none -kernel $(KERNEL) -m 128M -smp $(CPUS) -nographic
 QEMUOPTS += -global virtio-mmio.force-legacy=false
-QEMUOPTS += -drive file=fs.img,if=none,format=raw,id=x0
+QEMUOPTS += -drive file=$(FSIMG),if=none,format=raw,id=x0
 QEMUOPTS += -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
 
-qemu: check-qemu-version $K/kernel fs.img
+qemu: check-qemu-version $(KERNEL) $(FSIMG)
 	$(QEMU) $(QEMUOPTS)
 
 .gdbinit: .gdbinit.tmpl-riscv
-	sed "s/:1234/:$(GDBPORT)/" < $^ > $@
+	sed "s/:1234/:$(GDBPORT)/; s|kernel/kernel|$(KERNEL)|" < $^ > $@
 
-qemu-gdb: $K/kernel .gdbinit fs.img
+qemu-gdb: $(KERNEL) .gdbinit $(FSIMG)
 	@echo "*** Now run 'gdb' in another window." 1>&2
 	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
 
@@ -200,6 +234,6 @@ check-qemu-version:
 		exit 1; \
 	fi
 
-.PHONY: fmt
+.PHONY: fmt clean qemu qemu-gdb print-gdbport check-qemu-version
 fmt:
 	clang-format -i $(wildcard kernel/*.[ch] user/*.[ch] mkfs/*.c)
