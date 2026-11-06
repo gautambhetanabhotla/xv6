@@ -235,8 +235,10 @@ copyinstr3(char *s)
     exit(1);
   }
 
+  // b is not NUL-terminated, so call the system call directly: the
+  // PATH-searching exec() wrapper would read past it in user space.
   char *args[] = {"xx", 0};
-  ret = exec(b, args);
+  ret = execve(b, args, args + 1);
   if (ret != -1) {
     printf("exec(%s) returned %d, not -1\n", b, fd);
     exit(1);
@@ -2476,7 +2478,9 @@ pgbug(char *s)
 {
   char *argv[1];
   argv[0] = 0;
-  exec(big, argv);
+  // Wild pointer: call the system call directly, since the exec()
+  // wrapper would dereference it in user space.
+  execve(big, argv, argv);
   pipe(big);
 
   exit(0);

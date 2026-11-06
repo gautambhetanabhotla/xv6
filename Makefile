@@ -109,7 +109,7 @@ $B/$K/%.o: $K/%.S
 tags: $(OBJS)
 	etags kernel/*.S kernel/*.c
 
-ULIB = $B/$U/ulib.o $B/$U/usys.o $B/$U/printf.o $B/$U/umalloc.o
+ULIB = $B/$U/ulib.o $B/$U/usys.o $B/$U/printf.o $B/$U/umalloc.o $B/$U/env.o
 
 $B/$U/%.o: $U/%.c
 	@mkdir -p $(@D)
@@ -173,6 +173,7 @@ UPROGS=\
 	$(FS)/bin/cowtest\
 	$(FS)/bin/symlinktest\
 	$(FS)/bin/readlink\
+	$(FS)/bin/envtest\
 
 # usertests expects README.md in the root directory.
 $(FS)/README.md: README.md

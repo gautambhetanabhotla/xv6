@@ -29,7 +29,7 @@ entry("read");
 entry("write");
 entry("close");
 entry("kill");
-entry("exec");
+entry("execve");
 entry("open");
 entry("mknod");
 entry("unlink");

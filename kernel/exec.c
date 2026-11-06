@@ -25,11 +25,11 @@ flags2perm(int flags)
 // the implementation of the exec() system call
 //
 int
-kexec(char *path, char **argv)
+kexec(char *path, char **argv, char **envp)
 {
   char *s, *last;
   int i, off;
-  uint64 argc, sz = 0, sp, ustack[MAXARG], stackbase;
+  uint64 argc, envc, sz = 0, sp, ustack[MAXARG + MAXENV], stackbase;
   struct elfhdr elf;
   struct inode *ip;
   struct proghdr ph;
@@ -111,18 +111,33 @@ kexec(char *path, char **argv)
   }
   ustack[argc] = 0;
 
-  // push a copy of ustack[], the array of argv[] pointers.
-  sp -= (argc + 1) * sizeof(uint64);
+  // Do the same for the environment strings.
+  for (envc = 0; envp[envc]; envc++) {
+    if (envc >= MAXENV)
+      goto bad;
+    sp -= strlen(envp[envc]) + 1;
+    sp -= sp % 16; // riscv sp must be 16-byte aligned
+    if (sp < stackbase)
+      goto bad;
+    if (copyout(pagetable, sp, envp[envc], strlen(envp[envc]) + 1) < 0)
+      goto bad;
+    ustack[argc + envc + 1] = sp;
+  }
+  ustack[argc + envc + 1] = 0;
+
+  // push a copy of ustack[], the array of argv[] and envp[] pointers.
+  sp -= (argc + envc + 2) * sizeof(uint64);
   sp -= sp % 16;
   if (sp < stackbase)
     goto bad;
-  if (copyout(pagetable, sp, (char *)ustack, (argc + 1) * sizeof(uint64)) < 0)
+  if (copyout(pagetable, sp, (char *)ustack, (argc + envc + 2) * sizeof(uint64)) < 0)
     goto bad;
 
-  // a0 and a1 contain arguments to user main(argc, argv)
+  // a0, a1 and a2 contain arguments to user main(argc, argv, envp)
   // argc is returned via the system call return
   // value, which goes in a0.
   p->trapframe->a1 = sp;
+  p->trapframe->a2 = sp + (argc + 1) * sizeof(uint64); // envp is right after argv
 
   // Save program name for debugging.
   for (last = s = path; *s; s++)

@@ -11,7 +11,7 @@ int write(int, const void *, int);
 int read(int, void *, int);
 int close(int);
 int kill(int);
-int exec(const char *, char **);
+int execve(const char *, char **, char **);
 int open(const char *, int);
 int mknod(const char *, short, short);
 int unlink(const char *);
@@ -36,6 +36,7 @@ char *strcpy(char *, const char *);
 void *memmove(void *, const void *, int);
 char *strchr(const char *, char c);
 int strcmp(const char *, const char *);
+int strncmp(const char *, const char *, uint);
 char *gets(char *, int max);
 uint strlen(const char *);
 void *memset(void *, int, uint);
@@ -44,6 +45,9 @@ int memcmp(const void *, const void *, uint);
 void *memcpy(void *, const void *, uint);
 char *sbrk(int);
 char *sbrklazy(int);
+int exec(char *, char **); // execve with the current environ (ulib.c)
+char *getenv(const char *name);
+void setenv(const char *name, const char *value);
 
 // printf.c
 void fprintf(int, const char *, ...) __attribute__((format(printf, 2, 3)));

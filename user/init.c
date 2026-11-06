@@ -9,6 +9,8 @@
 #include "user/user.h"
 #include "kernel/fcntl.h"
 
+extern char **environ;
+
 char *argv[] = {"sh", 0};
 
 int
@@ -22,6 +24,17 @@ main(void)
   }
   dup(0); // stdout
   dup(0); // stderr
+
+  char *init_env[] = {
+    "PATH=/bin:",
+    "HOME=/root",
+    "USER=root",
+    "SHELL=/bin/sh",
+    "PWD=/root",
+    0
+  };
+
+  environ = init_env;
 
   for (;;) {
     printf("init: starting sh\n");

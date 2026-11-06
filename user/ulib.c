@@ -5,13 +5,16 @@
 #include "kernel/vm.h"
 #include "user/user.h"
 
+char** environ;
+
 //
 // wrapper so that it's OK if main() does not call exit().
 //
 void
-start(int argc, char **argv)
+start(int argc, char **argv, char **envp)
 {
   int r;
+  environ = envp;
   extern int main(int argc, char **argv);
   r = main(argc, argv);
   exit(r);
@@ -33,6 +36,16 @@ strcmp(const char *p, const char *q)
 {
   while (*p && *p == *q)
     p++, q++;
+  return (uchar)*p - (uchar)*q;
+}
+
+int
+strncmp(const char *p, const char *q, uint n)
+{
+  while (n > 0 && *p && *p == *q)
+    n--, p++, q++;
+  if (n == 0)
+    return 0;
   return (uchar)*p - (uchar)*q;
 }
 

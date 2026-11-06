@@ -448,17 +448,19 @@ sys_chdir(void)
 }
 
 uint64
-sys_exec(void)
+sys_execve(void)
 {
-  char path[MAXPATH], *argv[MAXARG];
+  char path[MAXPATH], *argv[MAXARG], *envp[MAXENV];
   int i;
-  uint64 uargv, uarg;
+  uint64 uargv, uarg, uenvp;
 
   argaddr(1, &uargv);
+  argaddr(2, &uenvp);
   if (argstr(0, path, MAXPATH) < 0) {
     return -1;
   }
   memset(argv, 0, sizeof(argv));
+  memset(envp, 0, sizeof(envp));
   for (i = 0;; i++) {
     if (i >= NELEM(argv)) {
       goto bad;
@@ -476,17 +478,38 @@ sys_exec(void)
     if (fetchstr(uarg, argv[i], PGSIZE) < 0)
       goto bad;
   }
+  for (i = 0;; i++) {
+    if (i >= NELEM(envp)) {
+      goto bad;
+    }
+    if (fetchaddr(uenvp + sizeof(uint64) * i, (uint64 *)&uarg) < 0) {
+      goto bad;
+    }
+    if (uarg == 0) {
+      envp[i] = 0;
+      break;
+    }
+    envp[i] = kalloc();
+    if (envp[i] == 0)
+      goto bad;
+    if (fetchstr(uarg, envp[i], PGSIZE) < 0)
+      goto bad;
+  }
 
-  int ret = kexec(path, argv);
+  int ret = kexec(path, argv, envp);
 
   for (i = 0; i < NELEM(argv) && argv[i] != 0; i++)
     kfree(argv[i]);
+  for (i = 0; i < NELEM(envp) && envp[i] != 0; i++)
+    kfree(envp[i]);
 
   return ret;
 
 bad:
   for (i = 0; i < NELEM(argv) && argv[i] != 0; i++)
     kfree(argv[i]);
+  for (i = 0; i < NELEM(envp) && envp[i] != 0; i++)
+    kfree(envp[i]);
   return -1;
 }
 
