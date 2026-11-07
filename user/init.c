@@ -34,6 +34,8 @@ main(void)
     0
   };
 
+  chdir("/root");
+
   environ = init_env;
 
   for (;;) {

@@ -3259,6 +3259,13 @@ main(int argc, char *argv[])
     printf("Usage: usertests [-c] [-C] [-q] [testname]\n");
     exit(1);
   }
+  // The tests assume they run in the root directory: some of them
+  // rely on ".." at / staying at /, or chdir to / and expect to find
+  // the files they made.
+  if (chdir("/") < 0) {
+    printf("usertests: chdir / failed\n");
+    exit(1);
+  }
   if (drivetests(quick, continuous, justone)) {
     exit(1);
   }

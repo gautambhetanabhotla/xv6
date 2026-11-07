@@ -1,4 +1,5 @@
-// Tests for environment variables (getenv/setenv) across fork.
+// Tests for environment variables (getenv/setenv/unsetenv) across fork
+// and exec. The exec tests run the helper program envcheck.
 
 #include "kernel/types.h"
 #include "user/user.h"
@@ -115,11 +116,143 @@ test_isolate(void)
   printf("test %s: OK\n", t);
 }
 
+// Exit status of a child whose exec returned, as opposed to envcheck's
+// 0 (environment as expected) or 1 (it wasn't).
+#define EXEC_FAILED 100
+
+// Report the result of a child that exec'd envcheck.
+static int
+checkexec(const char *test, int st)
+{
+  if (st == 0)
+    return 1;
+  if (st == EXEC_FAILED)
+    fail(test, "exec failed");
+  else if (st == 1)
+    fail(test, "envcheck saw the wrong environment");
+  else
+    fail(test, "child exited abnormally");
+  return 0;
+}
+
+// Test 3: exec passes the current environment on to the new program.
+
+static int
+exec_child(void)
+{
+  char *args[] = {"envcheck", "ENVTEST_EXEC=across-exec", "ENVTEST_EMPTY=",
+                  "ENVTEST_INHERIT=from-parent", "ENVTEST_NOSUCHVAR", 0};
+  exec("/bin/envcheck", args);
+  return EXEC_FAILED;
+}
+
+static void
+test_exec(void)
+{
+  char *t = "exec";
+
+  printf("test %s\n", t);
+  setenv("ENVTEST_EXEC", "across-exec");
+  setenv("ENVTEST_EMPTY", "");
+  if (checkexec(t, runchild(exec_child)))
+    printf("test %s: OK\n", t);
+}
+
+// Test 4: changes made after fork but before exec reach the new
+// program, and don't show up in the parent.
+
+static int
+execchange_child(void)
+{
+  char *args[] = {"envcheck", "ENVTEST_OVER=new", "ENVTEST_ADDED=1",
+                  "ENVTEST_GONE", 0};
+  setenv("ENVTEST_OVER", "new");
+  setenv("ENVTEST_ADDED", "1");
+  unsetenv("ENVTEST_GONE");
+  exec("/bin/envcheck", args);
+  return EXEC_FAILED;
+}
+
+static void
+test_execchange(void)
+{
+  char *t = "execchange";
+  char *v;
+
+  printf("test %s\n", t);
+  setenv("ENVTEST_OVER", "old");
+  setenv("ENVTEST_GONE", "still-here");
+  if (!checkexec(t, runchild(execchange_child)))
+    return;
+
+  v = getenv("ENVTEST_OVER");
+  if (v == 0 || strcmp(v, "old") != 0) {
+    fail(t, "child's overwrite leaked into parent");
+    return;
+  }
+  if (getenv("ENVTEST_ADDED") != 0) {
+    fail(t, "variable added by child leaked into parent");
+    return;
+  }
+  if (getenv("ENVTEST_GONE") == 0) {
+    fail(t, "child's unsetenv leaked into parent");
+    return;
+  }
+  printf("test %s: OK\n", t);
+}
+
+// Test 5: execve gives the new program exactly the environment passed
+// to it, replacing the caller's rather than adding to it.
+
+static int
+execve_child(void)
+{
+  char *args[] = {"envcheck", "ENVTEST_ONLY=1", "ENVTEST_EXEC", "PATH", 0};
+  char *env[] = {"ENVTEST_ONLY=1", 0};
+  execve("/bin/envcheck", args, env);
+  return EXEC_FAILED;
+}
+
+static void
+test_execve(void)
+{
+  char *t = "execve";
+
+  printf("test %s\n", t);
+  if (checkexec(t, runchild(execve_child)))
+    printf("test %s: OK\n", t);
+}
+
+// Test 6: a program can start with an empty environment.
+
+static int
+execveempty_child(void)
+{
+  char *args[] = {"envcheck", "ENVTEST_EXEC", "PATH", 0};
+  char *env[] = {0};
+  execve("/bin/envcheck", args, env);
+  return EXEC_FAILED;
+}
+
+static void
+test_execveempty(void)
+{
+  char *t = "execveempty";
+
+  printf("test %s\n", t);
+  if (checkexec(t, runchild(execveempty_child)))
+    printf("test %s: OK\n", t);
+}
+
 int
 main(int argc, char *argv[])
 {
   test_inherit();
   test_isolate();
+  test_exec();
+  test_execchange();
+  test_execve();
+  test_execveempty();
 
   if (failures) {
     printf("envtest: %d test(s) FAILED\n", failures);

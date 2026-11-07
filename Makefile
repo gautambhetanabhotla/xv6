@@ -174,6 +174,7 @@ UPROGS=\
 	$(FS)/bin/symlinktest\
 	$(FS)/bin/readlink\
 	$(FS)/bin/envtest\
+	$(FS)/bin/envcheck\
 
 # usertests expects README.md in the root directory.
 $(FS)/README.md: README.md

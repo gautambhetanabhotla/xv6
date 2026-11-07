@@ -336,6 +336,13 @@ iter()
 int
 main()
 {
+  // go() makes grindir in the current directory, but then expects to
+  // find it from the root directory.
+  if (chdir("/") != 0) {
+    printf("grind: chdir / failed\n");
+    exit(1);
+  }
+
   while (1) {
     int pid = fork();
     if (pid == 0) {
