@@ -22,11 +22,13 @@ struct inode {
   int valid;             // inode has been read from disk?
 
   short type; // copy of disk inode
-  short major;
-  short minor;
-  short nlink;
-  uint size;
+  uint major;
+  uint minor;
+  uint nlink;
+  uint64 size;
   uint addrs[NDIRECT + 1];
+  short permissions;
+  short owner;
 };
 
 // map major device number to device functions.

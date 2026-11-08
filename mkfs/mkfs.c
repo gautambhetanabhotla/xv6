@@ -28,6 +28,7 @@
 #endif
 
 #define NINODES 200
+#define ROOT_UID 0 // owner of every file in the image
 
 // Disk layout:
 // [ boot block | sb block | log | inode blocks | free bit map | data blocks ]
@@ -49,7 +50,7 @@ void wsect(uint, void *);
 void winode(uint, struct dinode *);
 void rinode(uint inum, struct dinode *ip);
 void rsect(uint sec, void *buf);
-uint ialloc(ushort type);
+uint ialloc(ushort type, short permissions);
 void iappend(uint inum, void *p, int n);
 void die(const char *);
 void addtree(uint dirino, const char *hostdir);
@@ -78,12 +79,38 @@ xint(uint x)
   return y;
 }
 
+// Convert a host file mode to xv6 permissions. xv6 has no group
+// permissions, so those are dropped. It has a single s-bit, set if the
+// host file is setuid or sticky.
+short
+hostperm(mode_t mode)
+{
+  short perm = 0;
+
+  if (mode & S_IRUSR)
+    perm |= P_ROWN;
+  if (mode & S_IWUSR)
+    perm |= P_WOWN;
+  if (mode & S_IXUSR)
+    perm |= P_XOWN;
+  if (mode & S_IROTH)
+    perm |= P_ROTH;
+  if (mode & S_IWOTH)
+    perm |= P_WOTH;
+  if (mode & S_IXOTH)
+    perm |= P_XOTH;
+  if (mode & (S_ISUID | S_ISVTX))
+    perm |= P_S_BIT;
+  return perm;
+}
+
 int
 main(int argc, char *argv[])
 {
   int i;
   uint rootino;
   struct xv6_dirent de;
+  struct stat st;
   char buf[BSIZE];
 
   static_assert(sizeof(int) == 4, "Integers must be 4 bytes!");
@@ -126,7 +153,10 @@ main(int argc, char *argv[])
   memmove(buf, &sb, sizeof(sb));
   wsect(1, buf);
 
-  rootino = ialloc(T_DIR);
+  // rootdir on the host becomes / in the image.
+  if (stat(argv[2], &st) < 0)
+    die(argv[2]);
+  rootino = ialloc(T_DIR, hostperm(st.st_mode));
   assert(rootino == ROOTINO);
 
   bzero(&de, sizeof(de));
@@ -213,7 +243,7 @@ addtree(uint dirino, const char *hostdir)
       die(path);
 
     if (S_ISDIR(st.st_mode)) {
-      inum = ialloc(T_DIR);
+      inum = ialloc(T_DIR, hostperm(st.st_mode));
       adddirent(dirino, inum, name);
       adddirent(inum, inum, ".");
       adddirent(inum, dirino, "..");
@@ -224,7 +254,7 @@ addtree(uint dirino, const char *hostdir)
       addtree(inum, path);
       padsize(inum);
     } else if (S_ISREG(st.st_mode)) {
-      inum = ialloc(T_FILE);
+      inum = ialloc(T_FILE, hostperm(st.st_mode));
       adddirent(dirino, inum, name);
       if ((fd = open(path, O_RDONLY)) < 0)
         die(path);
@@ -242,7 +272,7 @@ addtree(uint dirino, const char *hostdir)
         exit(1);
       }
       buf[len] = '\0';
-      inum = ialloc(T_SYMLINK);
+      inum = ialloc(T_SYMLINK, hostperm(st.st_mode));
       adddirent(dirino, inum, name);
       iappend(inum, buf, len + 1);
     } else {
@@ -299,7 +329,7 @@ rsect(uint sec, void *buf)
 }
 
 uint
-ialloc(ushort type)
+ialloc(ushort type, short permissions)
 {
   uint inum = freeinode++;
   struct dinode din;
@@ -313,6 +343,8 @@ ialloc(ushort type)
   din.type = xshort(type);
   din.nlink = xshort(1);
   din.size = xint(0);
+  din.permissions = xshort(permissions);
+  din.owner = xshort(ROOT_UID);
   winode(inum, &din);
   return inum;
 }
